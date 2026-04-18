@@ -1,10 +1,8 @@
 /**
- * AlertCard — single alert with expandable SHAP waterfall.
+ * AlertCard — simplified alert view per user request.
  */
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import type { Alert } from '../../lib/types';
-import ShapWaterfall from './ShapWaterfall';
 
 interface Props {
   alert: Alert;
@@ -31,13 +29,20 @@ function crisisLabel(ct: string) {
 }
 
 export default function AlertCard({ alert }: Props) {
-  const [showShap, setShowShap] = useState(false);
   const sev = alert.severity.toLowerCase();
 
-  const primaryDriver = alert.top_shap?.[0];
-  const driverText = primaryDriver
-    ? `Primary driver: ${primaryDriver.feature_name.replace(/_/g, ' ')} ${primaryDriver.direction === 'up' ? '+' : ''}${primaryDriver.shap_value.toFixed(2)}`
-    : null;
+  // Use recommended_actions as the primary human reason, or map from the crisis type to a simple realistic sentence.
+  let reasonText = alert.recommended_actions?.[0] || 'Unusual condition flagged by the system.';
+  
+  if (!alert.recommended_actions?.length) {
+    if (alert.crisis_type === 'BANKING_INSTABILITY') {
+      reasonText = 'Recent banking sector stress and rising loan defaults';
+    } else if (alert.crisis_type === 'MARKET_CRASH') {
+      reasonText = 'Stock market volatility is increasing due to investor panic';
+    } else if (alert.crisis_type === 'LIQUIDITY_SHORTAGE') {
+      reasonText = 'Cash flow in financial system is tightening';
+    }
+  }
 
   return (
     <motion.div
@@ -47,48 +52,28 @@ export default function AlertCard({ alert }: Props) {
       transition={{ duration: 0.3 }}
       layout
     >
-      <div className="alert-card-top">
+      <div className="alert-card-top" style={{ marginBottom: 12 }}>
         <span className={`severity-pill ${sev}`}>{alert.severity}</span>
-        <span className="crisis-badge">{crisisLabel(alert.crisis_type)}</span>
-        <span className="alert-time">{formatTime(alert.triggered_at)}</span>
-      </div>
-
-      <div className="alert-score-line">
-        <span style={{ color: scoreColor(alert.score) }}>
-          {crisisLabel(alert.crisis_type)}: {alert.score.toFixed(1)}
+        <span className="crisis-badge" style={{ fontWeight: 600, fontSize: 13, color: '#fff' }}>
+          {crisisLabel(alert.crisis_type)}
         </span>
-        <span className="ci">{' '}[CI: {alert.ci_lower.toFixed(1)}–{alert.ci_upper.toFixed(1)}]</span>
+        <span className="alert-time" style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-3)' }}>
+          {formatTime(alert.triggered_at)}
+        </span>
       </div>
 
-      {driverText && <div className="alert-driver">📊 {driverText}</div>}
-
-      {alert.historical_analog && (
-        <div className="alert-analog">
-          📜 Closest precedent: {alert.historical_analog.event_name} ({(alert.historical_analog.similarity_score * 100).toFixed(0)}% match)
+      <div style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.02)', borderRadius: 6, marginBottom: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 13, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Risk Percentage</span>
+          <span style={{ fontSize: 16, fontWeight: 700, fontFamily: 'var(--mono)', color: scoreColor(alert.score) }}>
+            {alert.score.toFixed(1)}%
+          </span>
         </div>
-      )}
+      </div>
 
-      {alert.recommended_actions?.[0] && (
-        <div className="alert-action">💡 {alert.recommended_actions[0]}</div>
-      )}
-
-      <button className="shap-toggle" onClick={() => setShowShap(!showShap)}>
-        {showShap ? 'Hide' : 'View'} SHAP Analysis
-      </button>
-
-      <AnimatePresence>
-        {showShap && alert.top_shap && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.25 }}
-            style={{ overflow: 'hidden' }}
-          >
-            <ShapWaterfall contributions={alert.top_shap} />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <div style={{ fontSize: 13, lineHeight: 1.5, color: 'var(--text-1)' }}>
+        <strong>Reason:</strong> {reasonText}
+      </div>
     </motion.div>
   );
 }

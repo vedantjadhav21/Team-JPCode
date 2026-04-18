@@ -4,7 +4,6 @@
 import { useState, useMemo } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { useRiskStore } from '../store/useRiskStore';
-import { MOCK_ALERTS } from '../lib/mockData';
 import AlertCard from '../components/alerts/AlertCard';
 import type { Alert, AlertSeverity } from '../lib/types';
 
@@ -12,9 +11,7 @@ const FILTERS: (AlertSeverity | 'ALL')[] = ['ALL', 'CRITICAL', 'HIGH', 'MEDIUM',
 
 export default function AlertsPage() {
   const [filter, setFilter] = useState<string>('ALL');
-  const storeAlerts = useRiskStore((s) => s.alerts);
-
-  const alerts: Alert[] = storeAlerts.length > 0 ? storeAlerts : MOCK_ALERTS;
+  const alerts: Alert[] = useRiskStore((s) => s.alerts);
 
   const filtered = useMemo(() => {
     if (filter === 'ALL') return alerts;

@@ -100,3 +100,32 @@ export async function fetchSectorScorecard(crisisType: string = 'BANKING_INSTABI
   const { data } = await api.get('/v1/sector-scorecard', { params: { crisis_type: crisisType } });
   return data;
 }
+
+/* ── Opportunity Endpoints ───────────────────────────────────── */
+
+export async function fetchInversePairs(crisisType?: string): Promise<any> {
+  const { data } = await api.get('/v1/opportunities/inverse', { params: crisisType ? { crisis_type: crisisType } : {} });
+  return data;
+}
+
+export async function fetchDefensiveAssets(crisisType: string = 'BANKING_INSTABILITY'): Promise<any> {
+  const { data } = await api.get('/v1/opportunities/defensive', { params: { crisis_type: crisisType } });
+  return data;
+}
+
+export async function fetchWatchlist(crisisType?: string): Promise<any> {
+  const { data } = await api.get('/v1/opportunities/watchlist', { params: crisisType ? { crisis_type: crisisType } : {} });
+  return data;
+}
+
+/* ── Sentiment Endpoints ─────────────────────────────────────── */
+
+export async function fetchSentiment(limit: number = 10): Promise<any> {
+  const { data } = await api.get('/v1/sentiment', { params: { limit } });
+  return data;
+}
+
+export async function fetchSentimentHistory(days: number = 7): Promise<any> {
+  const { data } = await api.get('/v1/sentiment/history', { params: { days } });
+  return data;
+}

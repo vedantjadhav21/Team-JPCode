@@ -1,13 +1,13 @@
 /**
  * CorrelationHeatmap — D3 grid heatmap of signal-pair correlations.
  */
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { CORR_SIGNALS, getCorrelationValue } from '../../lib/crossMarketData';
 
 const WINDOWS = ['5D', '20D', '60D', '252D'];
 
-export default function CorrelationHeatmap() {
+const CorrelationHeatmap = React.memo(function CorrelationHeatmap() {
   const svgRef = useRef<SVGSVGElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [window, setWindow] = useState('20D');
@@ -141,4 +141,6 @@ export default function CorrelationHeatmap() {
       )}
     </div>
   );
-}
+});
+
+export default CorrelationHeatmap;

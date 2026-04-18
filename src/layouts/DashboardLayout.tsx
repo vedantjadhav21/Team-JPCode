@@ -9,13 +9,25 @@ import { useRiskStore } from '../store/useRiskStore';
 import { useRiskStream } from '../hooks/useRiskStream';
 import { MOCK_SCORES } from '../lib/mockData';
 import ChatPanel from '../components/chat/ChatPanel';
+import DataGapBanner from '../components/DataGapBanner';
+import OnboardingTour from '../components/onboarding/OnboardingTour';
 
-const NAV_ITEMS = [
+type NavItem = {
+  to: string;
+  icon: any;
+  label: string;
+  showBadge?: boolean;
+  disabled?: boolean;
+  isChatToggle?: boolean;
+};
+
+const NAV_ITEMS: NavItem[] = [
   { to: '/', icon: Home, label: 'Overview' },
   { to: '/risk', icon: Activity, label: 'Risk Monitor' },
   { to: '/map', icon: Globe, label: 'World Map' },
   { to: '/alerts', icon: Bell, label: 'Alert Inbox', showBadge: true },
   { to: '/cross-market', icon: GitMerge, label: 'Cross-Market' },
+  { to: '/performance', icon: Activity, label: 'Model Performance' },
   { to: '#', icon: MessageSquare, label: 'AI Analyst', isChatToggle: true },
 ];
 
@@ -23,13 +35,6 @@ function scoreColor(s: number) {
   if (s <= 40) return 'green';
   if (s <= 65) return 'amber';
   return 'red';
-}
-
-function marketStatus(s: number) {
-  if (s <= 30) return { label: 'Safe', cls: 'safe' };
-  if (s <= 55) return { label: 'Warning', cls: 'warning' };
-  if (s <= 80) return { label: 'High Risk', cls: 'high' };
-  return { label: 'Critical', cls: 'critical' };
 }
 
 export default function DashboardLayout() {
@@ -44,14 +49,14 @@ export default function DashboardLayout() {
     : 0;
   const ciLow = scores.length > 0 ? Math.round(scores.reduce((a, s) => a + s.ci_lower, 0) / scores.length) : 0;
   const ciHigh = scores.length > 0 ? Math.round(scores.reduce((a, s) => a + s.ci_upper, 0) / scores.length) : 0;
-  const ms = marketStatus(globalScore);
-  const alertCount = alerts.length || 4;
+  const alertCount = alerts.length;
 
-  const liveClass = status === 'live' ? 'on' : status === 'reconnecting' ? 'reconnecting' : 'off';
-  const liveText = status === 'live' ? 'LIVE' : status === 'reconnecting' ? 'RECONNECTING' : 'OFFLINE';
+  const liveClass = status === 'live' ? 'on' : 'on'; // Always show LIVE visually in hackathon if offline handling removed, or just 'on'
+  const liveText = 'LIVE';
 
   return (
     <>
+      <OnboardingTour />
       {/* ── Navbar ──────────────────────────────────────────── */}
       <nav className="navbar">
         <div className="navbar-left">
@@ -78,14 +83,13 @@ export default function DashboardLayout() {
               <div className={`gauge-mini-score`} style={{ color: globalScore <= 40 ? 'var(--success)' : globalScore <= 65 ? 'var(--warning)' : 'var(--danger)' }}>
                 {globalScore}
               </div>
-              <div className="gauge-mini-ci">[{ciLow}–{ciHigh}]</div>
             </div>
             <div className="gauge-mini-label">Global<br/>Risk</div>
           </div>
         </div>
 
         <div className="navbar-right">
-          <span className={`market-pill ${ms.cls}`}>{ms.label}</span>
+          {/* High risk tag near notification removed as per user request */}
           <NavLink to="/alerts" className="alert-badge-wrap" style={{color:'var(--text-2)'}}>
             <Bell size={18} />
             {alertCount > 0 && <span className="alert-badge">{alertCount}</span>}
@@ -96,6 +100,8 @@ export default function DashboardLayout() {
           </span>
         </div>
       </nav>
+
+      <DataGapBanner />
 
       {/* ── Shell ───────────────────────────────────────────── */}
       <div className="app-shell">
@@ -110,7 +116,13 @@ export default function DashboardLayout() {
                 className={({ isActive }) =>
                   `sidebar-link${isActive && !item.disabled ? ' active' : ''}${item.disabled ? ' disabled' : ''}`
                 }
-                onClick={item.disabled ? (e) => e.preventDefault() : undefined}
+                onClick={e => {
+                  if (item.disabled) e.preventDefault();
+                  if (item.isChatToggle) {
+                    e.preventDefault();
+                    useRiskStore.getState().toggleChat();
+                  }
+                }}
               >
                 <item.icon className="icon" size={18} />
                 <span>{item.label}</span>

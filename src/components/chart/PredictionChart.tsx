@@ -2,15 +2,38 @@
  * PredictionChart — D3 candlestick chart with prediction zone,
  * directional arrow, key levels, and event pins.
  */
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
+import { Flag } from 'lucide-react';
 import { MOCK_ASSETS, MOCK_EVENTS, type Candle, type EventPin } from '../../lib/mockData';
 
 const ASSETS = ['GBPUSD', 'EURUSD', 'SPX', 'GOLD'] as const;
 const TIMEFRAMES = ['1H', '4H', '1D'] as const;
 const PREDICTION_CANDLES = 8;
 
-export default function PredictionChart() {
+interface SentimentNews {
+  candleIndex: number;
+  type: 'STRESS' | 'RELIEF';
+  headline: string;
+  score: number;
+}
+
+// Generate some mock sentiment data aligned with candles
+function getMockSentiment(candlesCount: number): SentimentNews[] {
+  const news: SentimentNews[] = [];
+  const spacing = Math.floor(candlesCount / 4);
+  for (let i = spacing; i < candlesCount; i += spacing) {
+    if (i % 2 === 0) {
+      news.push({ candleIndex: i, type: 'STRESS', headline: 'Markets tumble amidst liquidity fears', score: -0.65 });
+    } else {
+      news.push({ candleIndex: i, type: 'RELIEF', headline: 'Fed announces emergency liquidity swap', score: 0.55 });
+    }
+  }
+  return news;
+}
+
+
+const PredictionChart = React.memo(function PredictionChart() {
   const svgRef = useRef<SVGSVGElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [asset, setAsset] = useState<string>('GBPUSD');
@@ -18,6 +41,10 @@ export default function PredictionChart() {
   const [expandedEvent, setExpandedEvent] = useState<number | null>(null);
 
   const data = MOCK_ASSETS[asset];
+  const sentimentNews = getMockSentiment(data?.candles.length || 48);
+  const aggregateSentiment = -0.32; // Mock aggregate
+  const sentCls = aggregateSentiment <= -0.2 ? 'stress' : aggregateSentiment >= 0.2 ? 'relief' : 'neutral';
+  const sentLabel = aggregateSentiment <= -0.2 ? 'STRESSED' : aggregateSentiment >= 0.2 ? 'RELIEVED' : 'NEUTRAL';
 
   useEffect(() => {
     if (!svgRef.current || !wrapRef.current || !data) return;
@@ -27,7 +54,8 @@ export default function PredictionChart() {
     const rect = wrapRef.current.getBoundingClientRect();
     const W = rect.width;
     const H = 340;
-    const margin = { top: 12, right: 60, bottom: 28, left: 8 };
+    const sentimentBarHeight = 32;
+    const margin = { top: 12, right: 60, bottom: 28 + sentimentBarHeight, left: 8 };
     const iW = W - margin.left - margin.right;
     const iH = H - margin.top - margin.bottom;
 
@@ -139,12 +167,42 @@ export default function PredictionChart() {
       }
     });
 
-  }, [asset, tf, data]);
+    // Sentiment Bar Below Chart
+    const sentBarY = iH + 24;
+    candles.forEach((_, i) => {
+      const x = xScale(i)!;
+      // Mock daily variation
+      const rand = Math.sin(i * 0.5);
+      const isStress = Math.sin(i * 0.8) > 0.5;
+      const isRelief = Math.sin(i * 0.8) < -0.5;
+      const sColor = isStress ? 'var(--danger)' : isRelief ? 'var(--success)' : '#475569';
+      
+      const newsItem = sentimentNews.find(n => n.candleIndex === i);
+      const forcedColor = newsItem ? (newsItem.type === 'STRESS' ? 'var(--danger)' : 'var(--success)') : sColor;
+
+      g.append('rect')
+        .attr('x', x)
+        .attr('y', sentBarY)
+        .attr('width', Math.max(2, candleW - 1))
+        .attr('height', 8)
+        .attr('fill', forcedColor)
+        .attr('rx', 1)
+        .attr('opacity', 0.8);
+    });
+
+  }, [asset, tf, data, sentimentNews]);
 
   return (
     <div className="card chart-card">
-      <div className="card-header">
-        <span className="card-title">Price & Prediction — {asset}</span>
+      <div className="card-header" style={{ alignItems: 'flex-start' }}>
+        <div>
+          <div className="card-title">Price & Prediction — {asset}</div>
+          <div style={{ marginTop: 4 }}>
+            <span className={`sentiment-badge ${sentCls}`} style={{ padding: '2px 8px', fontSize: 10 }}>
+              Sentiment: {sentLabel}
+            </span>
+          </div>
+        </div>
         <div className="chart-toolbar">
           <div className="chart-tabs">
             {TIMEFRAMES.map(t => (
@@ -159,17 +217,35 @@ export default function PredictionChart() {
         </div>
       </div>
 
-      <div className="candle-chart-wrap" ref={wrapRef}>
+      <div className="candle-chart-wrap" ref={wrapRef} style={{ position: 'relative' }}>
         <svg ref={svgRef} />
+        
+        {/* News Pin Annotations */}
+        {sentimentNews.map((news, idx) => {
+          const totalCandles = data?.candles.length || 48;
+          const leftPct = ((news.candleIndex + 0.5) / totalCandles) * 100;
+          return (
+            <div key={`news-${idx}`} className="news-pin" style={{ left: `${leftPct}%`, top: 40 }}>
+              <div className="news-pin-icon" style={{ color: news.type === 'STRESS' ? 'var(--danger)' : 'var(--success)' }}>
+                <Flag size={14} fill="currentColor" opacity={0.3} />
+              </div>
+              <div className="news-pin-tooltip">
+                <div style={{ fontWeight: 600, color: '#fff', marginBottom: 4 }}>{news.type} SCORE: {news.score.toFixed(2)}</div>
+                <div style={{ color: 'var(--text-2)' }}>{news.headline}</div>
+              </div>
+            </div>
+          );
+        })}
+
         {/* Event tags as HTML overlays */}
         {MOCK_EVENTS.map((ev, idx) => {
           const totalCandles = data?.candles.length || 48;
           const leftPct = ((ev.index + 0.5) / totalCandles) * 100;
           return (
-            <div key={idx}>
+            <div key={`ev-${idx}`}>
               <div
                 className="event-tag"
-                style={{ left: `${leftPct}%`, top: 4 }}
+                style={{ left: `${leftPct}%`, top: 0 }}
                 onClick={() => setExpandedEvent(expandedEvent === idx ? null : idx)}
               >
                 {ev.label}
@@ -177,7 +253,7 @@ export default function PredictionChart() {
               {expandedEvent === idx && (
                 <div
                   className="event-tag"
-                  style={{ left: `${leftPct}%`, top: 28, padding: '8px 12px', zIndex: 10, maxWidth: 220, whiteSpace: 'normal' }}
+                  style={{ left: `${leftPct}%`, top: 24, padding: '8px 12px', zIndex: 10, maxWidth: 220, whiteSpace: 'normal' }}
                 >
                   <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 6 }}>{ev.detail}</div>
                   {ev.shapSummary.map((s, si) => (
@@ -193,4 +269,6 @@ export default function PredictionChart() {
       </div>
     </div>
   );
-}
+});
+
+export default PredictionChart;

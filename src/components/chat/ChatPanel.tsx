@@ -7,7 +7,40 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageSquare, Send, X, Zap, Loader2 } from 'lucide-react';
-import { useChatStream, type ChatMessage, type ChatMode } from '../../hooks/useChatStream';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { useRiskStore } from '../../store/useRiskStore';
+
+export type ChatRole = 'user' | 'assistant' | 'system';
+export interface ChatMessage {
+  id: string;
+  role: ChatRole;
+  content: string;
+  timestamp: Date;
+  isStreaming?: boolean;
+}
+
+const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY || ''; // Provide a fallback if needed
+const genAI = new GoogleGenerativeAI(geminiApiKey);
+
+async function fetchGeminiResponse(prompt: string, pastMessages: ChatMessage[]) {
+  if (!geminiApiKey) {
+    return "Gemini API Key is missing. Please set VITE_GEMINI_API_KEY in your environment.";
+  }
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const history = pastMessages.filter(m => m.role !== 'system').map(m => ({
+      role: m.role === 'user' ? 'user' : 'model',
+      parts: [{ text: m.content }],
+    }));
+    
+    const chat = model.startChat({ history });
+    const result = await chat.sendMessage(prompt);
+    return result.response.text();
+  } catch (err: any) {
+    console.error("Gemini Error:", err);
+    return "I am currently unable to connect to our predictive models. Please try again later.";
+  }
+}
 
 const STARTER_PROMPTS = [
   "Why is banking risk elevated right now?",
@@ -42,22 +75,13 @@ function formatMarkdown(text: string): string {
 }
 
 export default function ChatPanel() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [mode, setMode] = useState<ChatMode>('auto');
+  const isChatOpen = useRiskStore((s) => s.isChatOpen);
+  const setChatOpen = useRiskStore((s) => s.setChatOpen);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
   const [input, setInput] = useState('');
-  const [showReplayMenu, setShowReplayMenu] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-
-  const {
-    messages,
-    isConnected,
-    isStreaming,
-    replays,
-    sendMessage,
-    loadReplay,
-    clearMessages,
-  } = useChatStream();
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -66,16 +90,39 @@ export default function ChatPanel() {
 
   // Focus input when panel opens
   useEffect(() => {
-    if (isOpen) {
+    if (isChatOpen) {
       setTimeout(() => inputRef.current?.focus(), 300);
     }
-  }, [isOpen]);
+  }, [isChatOpen]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const trimmed = input.trim();
     if (!trimmed || isStreaming) return;
-    sendMessage(trimmed, mode);
+    
+    const userMessage: ChatMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: trimmed,
+      timestamp: new Date()
+    };
+    
+    setMessages(prev => [...prev, userMessage]);
     setInput('');
+    setIsStreaming(true);
+
+    const reply = await fetchGeminiResponse(trimmed, messages);
+    
+    setMessages(prev => [
+      ...prev,
+      {
+        id: `asst-${Date.now()}`,
+        role: 'assistant',
+        content: reply,
+        timestamp: new Date()
+      }
+    ]);
+    
+    setIsStreaming(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -86,7 +133,20 @@ export default function ChatPanel() {
   };
 
   const handleStarter = (prompt: string) => {
-    sendMessage(prompt, mode);
+    setInput(prompt);
+    // Let the user click send, or we could auto-send. Auto-send is nice:
+    setTimeout(() => {
+       const userMsg: ChatMessage = { id: `user-${Date.now()}`, role: 'user', content: prompt, timestamp: new Date() };
+       setMessages(prev => [...prev, userMsg]);
+       setIsStreaming(true);
+       fetchGeminiResponse(prompt, messages).then((reply) => {
+          setMessages(prev => [
+            ...prev,
+            { id: `asst-${Date.now()}`, role: 'assistant', content: reply, timestamp: new Date() }
+          ]);
+          setIsStreaming(false);
+       });
+    }, 100);
   };
 
   return (
@@ -94,18 +154,15 @@ export default function ChatPanel() {
       {/* Toggle button */}
       <button
         className="chat-toggle-btn"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => setChatOpen(!isChatOpen)}
         aria-label="Toggle AI Analyst"
       >
-        {isOpen ? <X size={20} /> : <MessageSquare size={20} />}
-        {!isOpen && isConnected && (
-          <span className="chat-toggle-dot" />
-        )}
+        {isChatOpen ? <X size={20} /> : <MessageSquare size={20} />}
       </button>
 
       {/* Panel */}
       <AnimatePresence>
-        {isOpen && (
+        {isChatOpen && (
           <motion.div
             className="chat-panel"
             initial={{ x: 400, opacity: 0 }}
@@ -117,65 +174,11 @@ export default function ChatPanel() {
             <div className="chat-header">
               <div className="chat-header-title">
                 <Zap size={16} style={{ color: 'var(--accent)' }} />
-                <span>AI Crisis Analyst</span>
-                <span className={`chat-status-dot ${isConnected ? 'on' : 'off'}`} />
+                <span>CrisisLens AI Analyst</span>
+                <span className={`chat-status-dot on`} />
               </div>
               <div className="chat-header-controls">
-                {/* Mode toggle */}
-                <div className="mode-toggle">
-                  {(['simple', 'advanced'] as ChatMode[]).map(m => (
-                    <button
-                      key={m}
-                      className={`mode-btn ${mode === m ? 'active' : ''}`}
-                      onClick={() => setMode(m)}
-                    >
-                      {m === 'simple' ? 'Simple' : 'Deep'}
-                    </button>
-                  ))}
-                </div>
-                {/* Replay dropdown */}
-                <div style={{ position: 'relative' }}>
-                  <button
-                    className="replay-btn"
-                    onClick={() => setShowReplayMenu(!showReplayMenu)}
-                  >
-                    📜
-                  </button>
-                  {showReplayMenu && (
-                    <div className="replay-menu">
-                      <div className="replay-menu-title">Load Historical Crisis</div>
-                      {replays.length > 0 ? replays.map(r => (
-                        <button
-                          key={r.id}
-                          className="replay-item"
-                          onClick={() => {
-                            loadReplay(r.id);
-                            setShowReplayMenu(false);
-                          }}
-                        >
-                          <div className="replay-item-name">{r.name}</div>
-                          <div className="replay-item-detail">{r.period} • {r.frame_count} frames</div>
-                        </button>
-                      )) : (
-                        <>
-                          <button className="replay-item" onClick={() => { loadReplay('2008_lehman'); setShowReplayMenu(false); }}>
-                            <div className="replay-item-name">2008 Lehman Brothers</div>
-                            <div className="replay-item-detail">Sep 2007 – Mar 2009 • 26 frames</div>
-                          </button>
-                          <button className="replay-item" onClick={() => { loadReplay('svb_2023'); setShowReplayMenu(false); }}>
-                            <div className="replay-item-name">SVB Banking Crisis</div>
-                            <div className="replay-item-detail">Jan – Mar 2023 • 8 frames</div>
-                          </button>
-                          <button className="replay-item" onClick={() => { loadReplay('eu_debt_2011'); setShowReplayMenu(false); }}>
-                            <div className="replay-item-name">EU Sovereign Debt Crisis</div>
-                            <div className="replay-item-detail">Jan – Dec 2011 • 12 frames</div>
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <button className="chat-close-btn" onClick={() => setIsOpen(false)}>
+                <button className="chat-close-btn" onClick={() => setChatOpen(false)}>
                   <X size={14} />
                 </button>
               </div>

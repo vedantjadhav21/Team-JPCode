@@ -11,6 +11,7 @@ interface RiskState {
   alerts: Alert[];
   connectionStatus: ConnectionStatus;
   lastUpdated: string | null;
+  isChatOpen: boolean;
 
   // Actions
   setScores: (scores: RiskScore[]) => void;
@@ -18,6 +19,8 @@ interface RiskState {
   setAlerts: (alerts: Alert[]) => void;
   setConnectionStatus: (status: ConnectionStatus) => void;
   setLastUpdated: (ts: string) => void;
+  toggleChat: () => void;
+  setChatOpen: (open: boolean) => void;
 }
 
 export const useRiskStore = create<RiskState>((set) => ({
@@ -25,7 +28,9 @@ export const useRiskStore = create<RiskState>((set) => ({
   scores: [],
   alerts: [],
   connectionStatus: 'offline',
+  connectionStatus: 'offline',
   lastUpdated: null,
+  isChatOpen: false,
 
   // Actions
   setScores: (scores) =>
@@ -41,4 +46,8 @@ export const useRiskStore = create<RiskState>((set) => ({
   setConnectionStatus: (connectionStatus) => set({ connectionStatus }),
 
   setLastUpdated: (lastUpdated) => set({ lastUpdated }),
+
+  toggleChat: () => set((state) => ({ isChatOpen: !state.isChatOpen })),
+  
+  setChatOpen: (isChatOpen) => set({ isChatOpen }),
 }));
